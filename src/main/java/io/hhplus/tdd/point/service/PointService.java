@@ -1,10 +1,10 @@
-package io.hhplus.tdd.service;
+package io.hhplus.tdd.point.service;
 
 import io.hhplus.tdd.point.PointHistory;
 import io.hhplus.tdd.point.TransactionType;
 import io.hhplus.tdd.point.UserPoint;
-import io.hhplus.tdd.repository.PointHistoryRepository;
-import io.hhplus.tdd.repository.UserPointRepository;
+import io.hhplus.tdd.point.repository.PointHistoryRepository;
+import io.hhplus.tdd.point.repository.UserPointRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -20,8 +20,8 @@ public class PointService {
     // 유저 포인트 조회
     public UserPoint getUserPoint(Long id) {
 
-        if(id == null) {
-
+        if(id == null || id < 0) {
+            throw new RuntimeException("아이디를 확인해 주세요.");
         }
 
         return userPointRepository.selectById(id);
@@ -51,8 +51,8 @@ public class PointService {
             pointHistoryRepository.insert(id, amount, TransactionType.USE, System.currentTimeMillis());
 
             return userPointRepository.insertOrUpdate(id, userPoint.point() - amount);
+        } else {
+            throw new RuntimeException("포인트가 부족합니다.");
         }
-
-        return null;
     }
 }
