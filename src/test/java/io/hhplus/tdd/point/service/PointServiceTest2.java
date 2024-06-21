@@ -1,63 +1,105 @@
 package io.hhplus.tdd.point.service;
 
-import io.hhplus.tdd.database.PointHistoryTable;
-import io.hhplus.tdd.database.UserPointTable;
 import io.hhplus.tdd.point.UserPoint;
-import org.assertj.core.api.Assertions;
+import io.hhplus.tdd.point.exception.PointShortageException;
+import static org.assertj.core.api.Assertions.*;
+
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.*;
 
 @SpringBootTest
 class PointServiceTest2 {
 
     @Autowired
-    UserPointTable userPointTable;
+    PointService pointService;
 
-    @Autowired
-    PointHistoryTable pointHistoryTable;
-
-    // 포인트 충전 여부 (동시성 체크)
     @Test
-    void chargePointTest() throws Exception {
+    @DisplayName("포인트 충전 동시성 체크")
+    void chargePointTest() throws InterruptedException {
         //given
-        long chargePoint = 3000L;
-        AtomicReference<UserPoint> userPoint = new AtomicReference<>(userPointTable.insertOrUpdate(0, 10000));
+        pointService.chargePoint(0, 10000);
 
         //when
-        // 쓰레드 3개 가정
-        for (int i = 0; i < 3; i++) {
-            new Thread(() -> {
-                synchronized (userPointTable) {
-                    UserPoint up = userPointTable.selectById(0L);
-                    userPoint.set(userPointTable.insertOrUpdate(0L, up.point() + chargePoint));
-                    System.out.println(userPoint.get().point());
+        Runnable A = () -> {
+            UserPoint userPoint1 = pointService.getUserPoint(0);
+            UserPoint userPoint2 = pointService.chargePoint(0, userPoint1.point() + 3000);
+            System.out.println("point " + userPoint2.point());
+        };
 
-                    try {
-                        Thread.sleep(1); // 추가적인 딜레이(복잡한 로직이 추가된다고 가정)
-                    } catch (InterruptedException e) {}
-                }
+        Runnable B = () -> {
+            UserPoint userPoint1 = pointService.getUserPoint(0);
+            UserPoint userPoint2 = pointService.chargePoint(0, userPoint1.point() + 4000);
+            System.out.println("point " + userPoint2.point());
+        };
 
-            }).start();
-        }
+        Runnable C = () -> {
+            UserPoint userPoint1 = pointService.getUserPoint(0);
+            UserPoint userPoint2 = pointService.chargePoint(0, userPoint1.point() + 2000);
+            System.out.println("point " + userPoint2.point());
+        };
+
+        CompletableFuture.runAsync(A).thenCompose((a) -> CompletableFuture.runAsync(B).thenCompose((b) -> CompletableFuture.runAsync(C))).join();
 
         Thread.sleep(1000); // 1000ms 후에 테스트 종료(결과 값을 확인)
 
         //then
-        Assertions.assertThat(userPoint.get().point()).isEqualTo(19000);
+        UserPoint userPoint = pointService.getUserPoint(0);
+        assertThat(userPoint.point()).isEqualTo(10000 + 3000 + 4000 + 2000);
     }
 
-    // 보유 포인트가 사용할 포인트보다 많을 경우 포인트 사용(동시성 체크2)
     @Test
-    public void usePointTest() throws InterruptedException {
+    @DisplayName("포인트 사용 동시성 체크")
+    void usePointTest() throws InterruptedException {
+        //given
+        pointService.chargePoint(0, 10000);
+
+        //when
+        Runnable A = () -> {
+            try {
+                UserPoint userPoint1 = pointService.usePoint(0, 3000);
+                System.out.println("point1" + userPoint1.point());
+            } catch (PointShortageException e) {
+                throw new RuntimeException(e);
+            }
+        };
+
+        Runnable B = () -> {
+            try {
+                UserPoint userPoint1 = pointService.usePoint(0, 4000);
+                System.out.println("point1" + userPoint1.point());
+            } catch (PointShortageException e) {
+                throw new RuntimeException(e);
+            }
+        };
+
+        Runnable C = () -> {
+            try {
+                UserPoint userPoint1 = pointService.usePoint(0, 3000);
+                System.out.println("point1" + userPoint1.point());
+            } catch (PointShortageException e) {
+                throw new RuntimeException(e);
+            }
+        };
+
+        CompletableFuture.runAsync(A).thenCompose((a) -> CompletableFuture.runAsync(B).thenCompose((b) -> CompletableFuture.runAsync(C))).join();
+
+        Thread.sleep(1000); // 1000ms 후에 테스트 종료(결과 값을 확인)
+
+        //then
+        UserPoint userPoint = pointService.getUserPoint(0);
+        assertThat(userPoint.point()).isEqualTo(10000 - 3000 - 4000 - 3000);
+    }
+
+
+    @Test
+    public void usePointTest2() throws InterruptedException {
         //given
         long amount = 4000L;
-        AtomicReference<UserPoint> userPoint = new AtomicReference<>(userPointTable.insertOrUpdate(0, 10000));
+        pointService.chargePoint(1L, 30000);
 
         int threadCount = 3;
 
@@ -70,19 +112,20 @@ class PointServiceTest2 {
         for (int i = 0; i < threadCount; i++) {
             executorService.submit(() -> {
                 try {
-                    synchronized (userPointTable)
+                    synchronized (pointService)
                     {
-                        UserPoint up = userPointTable.selectById(0L);
+                        UserPoint userPoint = pointService.getUserPoint(1L);
 
-                        //수행할 작업(메소드)
-                        if(up.point() > amount) {
-                            userPoint.set(userPointTable.insertOrUpdate(0L, up.point() - amount));
-                            System.out.println(userPoint.get().point());
-                        } else {
-                            System.out.println("포인트 부족!!!");
+                        if(userPoint.point() < amount) {
+                            throw new PointShortageException("포인트 부족");
                         }
+
+                        pointService.usePoint(1L, 3000L);
+                        System.out.println(userPoint.point());
                     }
 
+                } catch (PointShortageException e) {
+                    throw new RuntimeException(e);
                 } finally {
                     latch.countDown();
                 }
@@ -91,6 +134,7 @@ class PointServiceTest2 {
         latch.await();
 
         //then
-        Assertions.assertThat(userPoint.get().point()).isEqualTo(2000);
+        UserPoint userPoint = pointService.getUserPoint(1L);
+        assertThat(userPoint.point()).isEqualTo(30000 - 3000 - 3000 - 3000);
     }
 }

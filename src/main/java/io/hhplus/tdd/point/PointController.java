@@ -1,5 +1,6 @@
 package io.hhplus.tdd.point;
 
+import io.hhplus.tdd.point.exception.PointShortageException;
 import io.hhplus.tdd.point.service.PointService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -47,7 +48,7 @@ public class PointController {
     public UserPoint use(
             @PathVariable long id,
             @RequestBody long amount
-    ) {
+    ) throws PointShortageException {
         return pointService.usePoint(id, amount);
     }
 }
