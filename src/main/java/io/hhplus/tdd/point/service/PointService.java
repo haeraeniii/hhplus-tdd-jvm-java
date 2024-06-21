@@ -32,8 +32,10 @@ public class PointService {
     // 유저 포인트 충전
     @Synchronized
     public UserPoint chargePoint(long id, long amount) {
+        UserPoint userPoint = userPointRepository.selectById(id);
+
         // 유저 포인트 내역에 추가
-        pointHistoryRepository.insert(id, amount, TransactionType.CHARGE, System.currentTimeMillis());
+        pointHistoryRepository.insert(id, userPoint.point() + amount, TransactionType.CHARGE, System.currentTimeMillis());
 
         return userPointRepository.insertOrUpdate(id, amount);
     }

@@ -12,7 +12,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import java.util.concurrent.*;
 
 @SpringBootTest
-class PointServiceTest2 {
+class PointService2Test {
 
     @Autowired
     PointService pointService;
@@ -96,6 +96,7 @@ class PointServiceTest2 {
 
 
     @Test
+    @DisplayName("포인트 사용 동시성 체크2")
     public void usePointTest2() throws InterruptedException {
         //given
         long amount = 4000L;
@@ -112,7 +113,7 @@ class PointServiceTest2 {
         for (int i = 0; i < threadCount; i++) {
             executorService.submit(() -> {
                 try {
-                    synchronized (pointService)
+                    synchronized (this)
                     {
                         UserPoint userPoint = pointService.getUserPoint(1L);
 
@@ -121,7 +122,6 @@ class PointServiceTest2 {
                         }
 
                         pointService.usePoint(1L, 3000L);
-                        System.out.println(userPoint.point());
                     }
 
                 } catch (PointShortageException e) {
